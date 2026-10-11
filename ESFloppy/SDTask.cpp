@@ -12,6 +12,7 @@
 #include "types.h"
 #include "ui.h"
 #include "uiHelpers.h"
+#include "lisanet.h"    // LisaFPGA LisaNet (not upstream)
 
 // The SD card, OLED, and serial task that runs on the other core
 // It handles reading/writing tracks to the SD card, updating the OLED, and handling serial comms
@@ -31,6 +32,73 @@ FatFile rootDir; // The root directory of the SD card
 
 uint32_t diskInsertDelay = 0; // When we started the SD card task; used to insert the lower disk after a delay
 bool diskLoadingComplete = false; // A flag to indicate whether we've finished loading the lower disk yet
+
+// ---- LisaFPGA LisaNet (not upstream; written with an AI assistant; see lisanet.h) ----
+// When the FPGA's MODE line selects WIFI, the ESP32 restarts into the SD-server personality. Before it does, nothing the
+// Lisa has written may be lost. Tracks go straight to SD sectors (no file caching), so the only data at risk is the
+// one track still sitting in the floppy core's buffer, plus the DC42 checksums that closeImage() writes.
+// The switch is a pending state rather than a blocking wait: the floppy core may still need this task to write that
+// very track out, so the normal loop keeps serving its requests until the buffer is clean or the grace period ends.
+#define WIFI_SWITCH_GRACE_MS 2000
+extern ConfigSettings configSettings;
+extern BufferStatus* sonyUiBufferStatus;
+extern BufferStatus* twiggyUiBufferStatus;
+static bool wifiSwitchPending = false;
+static uint32_t wifiSwitchStart = 0;
+extern char driveFilenames[2][1024];
+
+// Mount-next: the SD server (WIFI mode) can name an image in /LISANET/MOUNTNXT.TXT. ESFloppy mounts it in drive 1 (the
+// Sony drive, or the lower Twiggy) every time it starts in FLOPPY mode, until it is cleared -- the same steps the file
+// picker takes. Useful on its own while a board's OLED is out of action, since the file picker is otherwise the only
+// way to choose an image.
+static void lisanetMountNext(SdTaskParams* p) {
+    File32 f;
+    if (!f.open("/LISANET/MOUNTNXT.TXT", O_RDONLY)) return;
+    char path[1024];
+    int n = f.read(path, sizeof(path) - 1);
+    f.close();
+    if (n <= 0) return;
+    path[n] = 0;
+    while (n && (path[n - 1] == '\r' || path[n - 1] == '\n' || path[n - 1] == ' ')) path[--n] = 0;
+    OpenResult r = openImage(path, &disk[1], p->diskMetadata[1]);
+    if (r == ResultSuccess) {
+        p->diskMetadata[1]->diskInserted = true;
+        strncpy(driveFilenames[1], path, sizeof(driveFilenames[1]));
+        Serial.printf("[lisanet] mount-next: mounted %s in drive 1\r\n", path);
+    } else {
+        Serial.printf("[lisanet] mount-next: could not mount %s (open result %d)\r\n", path, (int)r);
+    }
+}
+
+// Called from the task's loops whenever no request is in progress
+static void checkWifiModeSwitch(SdTaskParams* p) {
+    if (!wifiSwitchPending) {
+        if (!lisanetModeStableAt(HIGH)) return;
+        wifiSwitchPending = true;
+        wifiSwitchStart = millis();
+        Serial.println("[lisanet] MODE is WIFI: finishing disk writes before restarting");
+    }
+    BufferStatus* buf = (configSettings.emulMode == ModeTwiggy) ? twiggyUiBufferStatus : sonyUiBufferStatus;
+    bool clean = !buf->bufferDirty && buf->stashCount == 0;
+    if (!clean && millis() - wifiSwitchStart < WIFI_SWITCH_GRACE_MS) return;   // give the floppy core time to flush it
+
+    if (buf->bufferDirty) {
+        // Grace period over and the track is still unwritten: write it out the same way a WRITE_READ_TRACK request does
+        uint32_t drive = buf->bufferOwnerDrive;
+        if (drive < 2 && p->diskMetadata[drive]->diskInserted && buf->bufferOwnerTrack >= 0) {
+            Serial.printf("[lisanet] writing pending track %d of drive %u\r\n", (int)buf->bufferOwnerTrack, (unsigned)drive);
+            decodeTrackFromGCR(buf->bufferOwnerTrack, p->trackBufferGCR, p->trackBufferDecoded, p->diskMetadata[drive]);
+            writeTrack(buf->bufferOwnerTrack, &disk[drive], p->trackBufferDecoded, p->diskMetadata[drive]);
+        }
+    }
+    if (buf->stashCount) Serial.printf("[lisanet] %u stashed sectors not yet in the buffer were dropped\r\n", (unsigned)buf->stashCount);
+    for (int d = 0; d < 2; d++)
+        if (p->diskMetadata[d]->diskInserted) closeImage(&disk[d], p->diskMetadata[d]);   // updates DC42 checksums
+    Serial.println("[lisanet] disk images closed: restarting into the SD server");
+    Serial.flush();
+    delay(20);                                          // let the USB console send it before the restart
+    ESP.restart();
+}
 
 // Whether the buffer was dirty before the SD task executed its command; used by the UI to determine whether the last op was a read or write
 bool bufferWasDirty[2] = {false, false};
@@ -274,6 +342,7 @@ void sdCardTask(void* params) {
     // If we end up here, then there was no firmware update to do (the ESP will reboot if there was one)
     sdTaskParams->diskMetadata[0]->driveIndex = 0; // Set the drive index for the upper drive
     sdTaskParams->diskMetadata[1]->driveIndex = 1; // And also for the lower/Sony drive
+    lisanetMountNext(sdTaskParams); // LisaFPGA LisaNet: mount the image the SD server chose, if any
     Serial.println("ESFloppy is ready!"); // And if all this succeeds, print a ready message
     // Make sure that everything above here is truly done before we continue
     __sync_synchronize();
@@ -281,6 +350,7 @@ void sdCardTask(void* params) {
     // And that's to get the UI to display the welcome screen and allow the user to configure any settings that they may want to change
     // The uiUpdate function will return true when this process is done and false otherwise, so just keep calling it until it returns true
     while (!uiUpdate()) {
+        checkWifiModeSwitch(sdTaskParams); // LisaFPGA WiFi mode
         vTaskDelay(1);
     }
     sdTaskParams->sdTaskInterface->initDone = true; // The UI is happy, so set initDone to tell the main task that we're done initializing now
@@ -301,6 +371,7 @@ void sdCardTask(void* params) {
             }*/
             // Also call the uiUpdate function to update the OLED if necessary
             uiUpdate();
+            checkWifiModeSwitch(sdTaskParams); // LisaFPGA WiFi mode: only between requests, never mid-request
             vTaskDelay(1);
             continue;
         }

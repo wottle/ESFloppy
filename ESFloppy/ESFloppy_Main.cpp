@@ -5,6 +5,7 @@
 #include "sonyInterface.h"
 #include "twiggyInterface.h"
 #include "types.h"
+#include "lisanet.h"    // LisaFPGA LisaNet (not upstream)
 
 // Watchdog timer write enable register and value
 #define TIMG1_WDT_WE_REG 0x60020064
@@ -31,6 +32,9 @@ extern ConfigSettings configSettings;
 
 void setup() {
     init(); // Init the ESP32 Arduino core
+    // LisaFPGA LisaNet (not upstream; see lisanet.h): if the FPGA's MODE line selects WIFI, run the SD-server personality
+    // instead. This comes before initPins(), so in that mode none of the floppy lines are ever configured.
+    if (lisanetModeRequestedAtBoot()) sdServerMain();
     initLEDC(RDA); // Initialize the LEDC peripheral on the RDA pin for sending TACH pulses
     setDuty(128); // Set the LEDC duty cycle to 50%
     enableLEDCOutput(true); // And enable its output (note that this doesn't actually connect it to the pin though)
