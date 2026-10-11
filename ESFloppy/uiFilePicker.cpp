@@ -560,3 +560,12 @@ void filePickerDrawScreen() {
         OLED.drawStr(((128 - OLED.getStrWidth(buffer)) / 2), ((OLED.getDisplayHeight() - menuEnd) / 2), buffer);
     }
 }
+// LisaNet debug (virtual OLED): describes the highlighted file picker entry, for logging over USB while the OLED is unusable.
+void filePickerDescribe(char* buf, size_t len) {
+    if (numMenuEntries == 0) {
+        snprintf(buf, len, "%s: (no compatible images)", currentDirectory);
+    } else {
+        snprintf(buf, len, "%s: [%u/%u] %s", currentDirectory, (unsigned)(currentItemIndex + 1), (unsigned)numMenuEntries,
+                 directoryContents[currentItemIndex].filename);
+    }
+}

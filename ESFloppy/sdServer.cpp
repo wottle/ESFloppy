@@ -14,7 +14,7 @@
 #define PROTO_VERSION    1
 #define MAX_DATA         4096
 #define MAX_PAYLOAD      (MAX_DATA + 64)
-#define MOUNT_NEXT_FILE  "/LISANET/MOUNTNXT.TXT"
+#define MOUNT_NEXT_FILE  "/.LISANET/MOUNTNXT.TXT"
 
 enum : uint8_t { ST_OK = 0, ST_NOT_FOUND, ST_EXISTS, ST_IO, ST_BAD_REQUEST, ST_NO_HANDLE, ST_UNKNOWN_CMD, ST_NO_CARD,
                  ST_NO_CONTIGUOUS };
@@ -222,7 +222,7 @@ static void handle(uint8_t cmd, const uint8_t *p, size_t n) {
         if (n == 0) { SDCard.remove(MOUNT_NEXT_FILE); begin(ST_OK); return; }
         if (!getPath(p, n, path, sizeof path)) { begin(ST_BAD_REQUEST); return; }
         if (!SDCard.exists(path)) { begin(ST_NOT_FOUND); return; }
-        SDCard.mkdir("/LISANET", true);
+        SDCard.mkdir("/.LISANET", true);
         File32 f;
         if (!f.open(MOUNT_NEXT_FILE, O_RDWR | O_CREAT | O_TRUNC)) { begin(ST_IO); return; }
         bool ok = f.write(path, strlen(path)) == strlen(path);

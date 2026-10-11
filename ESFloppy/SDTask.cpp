@@ -47,13 +47,13 @@ static bool wifiSwitchPending = false;
 static uint32_t wifiSwitchStart = 0;
 extern char driveFilenames[2][1024];
 
-// Mount-next: the SD server (WIFI mode) can name an image in /LISANET/MOUNTNXT.TXT. ESFloppy mounts it in drive 1 (the
+// Mount-next: the SD server (WIFI mode) can name an image in /.LISANET/MOUNTNXT.TXT. ESFloppy mounts it in drive 1 (the
 // Sony drive, or the lower Twiggy) every time it starts in FLOPPY mode, until it is cleared -- the same steps the file
 // picker takes. Useful on its own while a board's OLED is out of action, since the file picker is otherwise the only
 // way to choose an image.
 static void lisanetMountNext(SdTaskParams* p) {
     File32 f;
-    if (!f.open("/LISANET/MOUNTNXT.TXT", O_RDONLY)) return;
+    if (!f.open("/.LISANET/MOUNTNXT.TXT", O_RDONLY)) return;
     char path[1024];
     int n = f.read(path, sizeof(path) - 1);
     f.close();

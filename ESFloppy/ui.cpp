@@ -663,6 +663,46 @@ void statusDrawScreen() {
 
 bool displayDimmed = false; // Whether the display is currently dimmed or not
 
+// LisaNet debug (virtual OLED): logs button presses, screen changes, the file picker highlight and error messages over
+// USB, so the UI can be followed on a board whose OLED is unusable.
+void filePickerDescribe(char* buf, size_t len);
+extern char driveFilenames[2][1024];
+static void lisanetLogUi(const bool buttonStates[3]) {
+    static Screen* lastScreen = nullptr;
+    static char lastPick[300] = "";
+    static const char* const buttonNames[3] = {"LEFT", "SEL", "RIGHT"};
+    for (int i = 0; i < 3; i++) {
+        if (buttonStates[i]) Serial.printf("[ui] %s pressed\r\n", buttonNames[i]);
+    }
+    if (currentScreen != lastScreen) {
+        lastScreen = currentScreen;
+        lastPick[0] = 0;
+        const char* name = currentScreen == &welcomeScreen ? "WELCOME (SEL within 5 s opens SETTINGS)"
+                         : currentScreen == &settingsScreen ? "SETTINGS (only a reboot leaves it)"
+                         : currentScreen == &statusScreen ? "STATUS"
+                         : currentScreen == &filePickerScreen ? "FILE PICKER (SEL = choose, hold SEL = back)"
+                         : currentScreen == &errorScreen ? "ERROR" : "?";
+        Serial.printf("[ui] screen: %s\r\n", name);
+        if (currentScreen == &errorScreen) {
+            for (uint32_t i = 0; i < errorMessageLineCount; i++) Serial.printf("[ui]   %s\r\n", errorMessageLines[i]);
+        }
+        if (currentScreen == &statusScreen) {
+            for (int d = twiggyMode() ? 0 : 1; d < 2; d++) {
+                Serial.printf("[ui]   drive %d: %s\r\n", d,
+                              diskMetadataPointers[d]->diskInserted ? driveFilenames[d] : "(empty)");
+            }
+        }
+    }
+    if (currentScreen == &filePickerScreen) {
+        char pick[300];
+        filePickerDescribe(pick, sizeof(pick));
+        if (strcmp(pick, lastPick) != 0) {
+            strcpy(lastPick, pick);
+            Serial.printf("[ui]   highlight %s\r\n", pick);
+        }
+    }
+}
+
 // This function gets called periodically to update the UI; it basically manages the screens and calls their appropriate functions
 // It returns false if the UI is in the startup process (welcome or settings screen) and true otherwise
 bool uiUpdate() {
@@ -700,6 +740,7 @@ bool uiUpdate() {
     currentScreen->buttonPress(buttonStates);
     // As well as the tick function
     currentScreen->tick(currentTime);
+    lisanetLogUi(buttonStates);
 
     // Only redraw the framebuffer if something actually changed; no point in wasting precious clock cycles if there's nothing to update
     // Keep in mind that this is only updating the framebuffer in RAM, not sending anything out over I2C, but still it's better not to waste time
