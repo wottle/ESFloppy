@@ -29,6 +29,10 @@ bool lisanetModeStableAt(bool level);
 // The SD-server personality (sdServer.cpp). Never returns: restarts the ESP32 when MODE goes back to FLOPPY.
 [[noreturn]] void sdServerMain();
 
+// The floppy remote control (lisanetDrive.cpp): in NORMAL mode the WiFi board can ask what is inserted, insert an
+// image and eject, over the same link. Called from the SD task's idle loop, alongside the OLED UI.
+void lisanetDrivePoll();
+
 // The OLED guard (lisanetOled.cpp): call right after Wire.begin(), before OLED.begin(). A display that does not answer
 // at start-up, or a transfer that later takes more than 5 ms, switches OLED updates off so they can't stall the SD task
 // (and with it the floppy core). lisanetOledPresent() says whether updates are still going out.

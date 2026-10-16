@@ -373,6 +373,7 @@ void sdCardTask(void* params) {
             // Also call the uiUpdate function to update the OLED if necessary
             uiUpdate();
             checkWifiModeSwitch(sdTaskParams); // LisaFPGA WiFi mode: only between requests, never mid-request
+            lisanetDrivePoll();                  // LisaFPGA LisaNet: the floppy remote control (NORMAL mode)
             vTaskDelay(1);
             continue;
         }
