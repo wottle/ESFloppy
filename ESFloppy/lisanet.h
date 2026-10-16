@@ -28,3 +28,9 @@ bool lisanetModeStableAt(bool level);
 
 // The SD-server personality (sdServer.cpp). Never returns: restarts the ESP32 when MODE goes back to FLOPPY.
 [[noreturn]] void sdServerMain();
+
+// The OLED guard (lisanetOled.cpp): call right after Wire.begin(), before OLED.begin(). A display that does not answer
+// at start-up, or a transfer that later takes more than 5 ms, switches OLED updates off so they can't stall the SD task
+// (and with it the floppy core). lisanetOledPresent() says whether updates are still going out.
+void lisanetOledGuardInit();
+bool lisanetOledPresent();

@@ -298,6 +298,7 @@ void sdCardTask(void* params) {
     SD_SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS); // Start comms with the SD card using our hardware SPI instance
     // Now initialize the OLED
     Wire.begin(OLED_SDA, OLED_SCL); // Start the I2C bus for the OLED
+    lisanetOledGuardInit(); // LisaFPGA LisaNet: a dead or missing OLED must not stall this task (and the floppy)
     OLED.begin(); // And init it
     // Clear the display since there might be garbage on it after reset
     OLED.clearBuffer();
