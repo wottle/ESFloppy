@@ -10,6 +10,7 @@
 #include "uiHelpers.h"
 #include "uiSettingsMenu.h"
 #include "uiState.h"
+#include "lisanet.h"
 
 // All of the source code for ESFloppy's OLED-based UI
 
@@ -719,9 +720,16 @@ bool uiUpdate() {
     bool buttonStates[3] = {false, false, false};
     getButtonStates(buttonStates);
 
+    // LisaFPGA LisaNet: while the FPGA's on-screen menu is up, the OLED shows a copy of it (lisanetMenu.cpp). The FPGA
+    // holds our buttons released meanwhile, so nothing here reacts to them; the current screen keeps ticking underneath
+    // and is redrawn in full when the menu closes.
+    static bool lisanetMenuWasUp = false;
+    bool lisanetMenuUp = lisanetMenuShowing();
+
     // If any button is pressed, then record the time so we can determine when to dim the display
     // Also reset the lastInteractionTime if a drive motor comes on so that the display is bright when there's actual disk activity
-    if (buttonStates[0] || buttonStates[1] || buttonStates[2] || getTrackParams(0)->motorOn || getTrackParams(1)->motorOn) {
+    if (buttonStates[0] || buttonStates[1] || buttonStates[2] || getTrackParams(0)->motorOn || getTrackParams(1)->motorOn ||
+        lisanetMenuUp) {
         lastInteractionTime = currentTime;
     }
 
@@ -737,14 +745,27 @@ bool uiUpdate() {
     }
 
     // Call the button press function for the current screen
-    currentScreen->buttonPress(buttonStates);
+    if (!lisanetMenuUp) currentScreen->buttonPress(buttonStates);
     // As well as the tick function
     currentScreen->tick(currentTime);
     lisanetLogUi(buttonStates);
 
+    if (lisanetMenuUp) {
+        if (!lisanetMenuWasUp) {
+            lisanetMenuForceRedraw();
+            Serial.println("[ui] screen: LISAFPGA MENU (the on-screen menu is up)");
+        }
+        if (lisanetMenuDraw()) markAllPagesDirty();
+        redrawScreen = true;                     // whatever the screen underneath wanted, it gets once the menu closes
+    } else if (lisanetMenuWasUp) {
+        redrawWholeScreen();
+        Serial.println("[ui] screen: back from the LisaFPGA menu");
+    }
+    lisanetMenuWasUp = lisanetMenuUp;
+
     // Only redraw the framebuffer if something actually changed; no point in wasting precious clock cycles if there's nothing to update
     // Keep in mind that this is only updating the framebuffer in RAM, not sending anything out over I2C, but still it's better not to waste time
-    if (redrawScreen) {
+    if (redrawScreen && !lisanetMenuUp) {
         currentScreen->drawScreen();
         redrawScreen = false;
     }

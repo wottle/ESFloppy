@@ -38,3 +38,11 @@ void lisanetDrivePoll();
 // (and with it the floppy core). lisanetOledPresent() says whether updates are still going out.
 void lisanetOledGuardInit();
 bool lisanetOledPresent();
+
+// The OLED copy of the LisaFPGA on-screen menu (lisanetMenu.cpp). The floppy remote's receiver passes every link byte
+// to lisanetMenuByte(); while lisanetMenuShowing(), the UI draws the menu (lisanetMenuDraw() returns true when it redrew
+// the frame buffer) instead of its own screens, which carry on underneath and come back when the menu closes.
+void lisanetMenuByte(uint8_t b);
+bool lisanetMenuShowing();
+bool lisanetMenuDraw();
+void lisanetMenuForceRedraw();

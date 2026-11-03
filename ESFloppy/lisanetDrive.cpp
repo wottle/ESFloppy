@@ -122,7 +122,7 @@ static void handle(uint8_t cmd, const uint8_t* p, size_t n) {
             put8((driveExists(d) ? 1 : 0) | (in ? 2 : 0) | (ej ? 4 : 0));
             putStr(in ? driveFilenames[d] : "", 255);
         }
-        putStr("ESFloppy " FIRMWARE_VERSION " + LisaNet floppy remote 0.1", 64);
+        putStr("ESFloppy " FIRMWARE_VERSION " + LisaNet floppy remote 0.2", 64);
         break;
     }
     case CMD_DRIVE_LIST: {
@@ -235,6 +235,7 @@ void lisanetDrivePoll() {
     while (Link.available()) {
         uint8_t b = Link.read();
         lastByte = millis();
+        lisanetMenuByte(b);                                    // the FPGA's menu frames (lisanetMenu.cpp)
         if (have == 0 && b != 0xA5) continue;
         if (have == 1 && b != 0x5A) { have = (b == 0xA5) ? 1 : 0; continue; }
         rx[have++] = b;
