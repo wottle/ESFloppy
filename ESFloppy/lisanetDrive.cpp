@@ -13,6 +13,7 @@
 //   0x52 DRIVE_INSERT  u8 drive, path -> status
 //   0x53 DRIVE_EJECT   u8 drive, u8 force -> status. Sony drives have no eject button, so they always force-eject
 //                         (as a long SEL press does); a Twiggy can be asked to eject normally.
+//   0x54 WIFI_NOTICE   u8 state, four u8-length strings -> status. WiFi setup help for the OLED (lisanetWifi.cpp).
 // Everything runs in the SD task's idle loop, between the floppy core's track requests, exactly where the OLED UI and
 // its file picker run -- so an insert here is the same operation as one picked on the OLED.
 #include <Arduino.h>
@@ -35,7 +36,8 @@ extern Screen statusScreen;
 
 enum : uint8_t { ST_OK = 0, ST_NOT_FOUND = 1, ST_EXISTS = 2, ST_IO = 3, ST_BAD_REQUEST = 4, ST_UNKNOWN_CMD = 6,
                  ST_NO_CONTIGUOUS = 8, ST_UI_BUSY = 9, ST_BAD_IMAGE = 10, ST_IN_USE = 11 };
-enum : uint8_t { CMD_DRIVE_STATUS = 0x50, CMD_DRIVE_LIST = 0x51, CMD_DRIVE_INSERT = 0x52, CMD_DRIVE_EJECT = 0x53 };
+enum : uint8_t { CMD_DRIVE_STATUS = 0x50, CMD_DRIVE_LIST = 0x51, CMD_DRIVE_INSERT = 0x52, CMD_DRIVE_EJECT = 0x53,
+                 CMD_WIFI_NOTICE = 0x54 };
 
 #define DRV_MAX_REQ  600
 #define DRV_MAX_RESP 2400
@@ -122,7 +124,7 @@ static void handle(uint8_t cmd, const uint8_t* p, size_t n) {
             put8((driveExists(d) ? 1 : 0) | (in ? 2 : 0) | (ej ? 4 : 0));
             putStr(in ? driveFilenames[d] : "", 255);
         }
-        putStr("ESFloppy " FIRMWARE_VERSION " + LisaNet floppy remote 0.3", 64);
+        putStr("ESFloppy " FIRMWARE_VERSION " + LisaNet floppy remote 0.4", 64);
         break;
     }
     case CMD_DRIVE_LIST: {
@@ -189,6 +191,10 @@ static void handle(uint8_t cmd, const uint8_t* p, size_t n) {
         begin(ST_OK);
         break;
     }
+    case CMD_WIFI_NOTICE:
+        lisanetWifiNotice(p, n);
+        begin(ST_OK);
+        break;
     default:
         begin(ST_UNKNOWN_CMD);     // never sent back: see frame() -- a drive stays silent to the SD server's commands
     }
@@ -206,7 +212,7 @@ static void frame() {
     uint8_t cmd = rx[2], seq = rx[3];
     // Only the drive commands are answered. The SD server's commands (HELLO, LIST, ...) get no reply, so the WiFi board
     // still sees "no SD server" in NORMAL mode and never mistakes the drive for one.
-    if (cmd < CMD_DRIVE_STATUS || cmd > CMD_DRIVE_EJECT) return;
+    if (cmd < CMD_DRIVE_STATUS || cmd > CMD_WIFI_NOTICE) return;
     handle(cmd, rx + 6, len);
     uint8_t hdr[6] = {0xA5, 0x5A, (uint8_t)(cmd | 0x80), seq, (uint8_t)respLen, (uint8_t)(respLen >> 8)};
     uint32_t c = crcUpdate(crcUpdate(0xFFFFFFFFu, hdr + 2, 4), resp, respLen) ^ 0xFFFFFFFFu;

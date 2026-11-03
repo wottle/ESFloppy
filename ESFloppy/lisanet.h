@@ -46,3 +46,12 @@ void lisanetMenuByte(uint8_t b);
 bool lisanetMenuShowing();
 bool lisanetMenuDraw();
 void lisanetMenuForceRedraw();
+
+// WiFi setup help on the OLED (lisanetWifi.cpp): the WiFi board's WIFI_NOTICE (0x54) payloads go to lisanetWifiNotice();
+// the UI shows the notice (QR code + instructions, or where the web page is) while lisanetWifiShowing() and the menu
+// copy is not up, and hides it with lisanetWifiDismiss() on a button press. Same drawing calls as the menu copy.
+void lisanetWifiNotice(const uint8_t* p, size_t n);
+bool lisanetWifiShowing();
+void lisanetWifiDismiss();
+bool lisanetWifiDraw();
+void lisanetWifiForceRedraw();

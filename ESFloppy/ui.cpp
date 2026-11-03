@@ -725,11 +725,28 @@ bool uiUpdate() {
     // and is redrawn in full when the menu closes.
     static bool lisanetMenuWasUp = false;
     bool lisanetMenuUp = lisanetMenuShowing();
+    // LisaFPGA LisaNet: WiFi setup help from the WiFi board (lisanetWifi.cpp), shown when the menu copy is not up and
+    // never over ESFloppy's own settings screen. The FPGA does NOT block the buttons for it, so the first press only
+    // hides it, and that button is ignored until it is released.
+    static bool lisanetWifiWasUp = false;
+    static bool lisanetSwallow = false;
+    if (lisanetSwallow) {
+        if (!getButtonHeld(0) && !getButtonHeld(1) && !getButtonHeld(2)) lisanetSwallow = false;
+        else buttonStates[0] = buttonStates[1] = buttonStates[2] = false;
+    }
+    bool lisanetWifiUp = !lisanetMenuUp && currentScreen != &settingsScreen && lisanetWifiShowing();
+    if (lisanetWifiUp && (buttonStates[0] || buttonStates[1] || buttonStates[2])) {
+        lisanetWifiDismiss();
+        lisanetWifiUp = false;
+        lisanetSwallow = true;
+        buttonStates[0] = buttonStates[1] = buttonStates[2] = false;
+    }
+    bool lisanetOverlayUp = lisanetMenuUp || lisanetWifiUp;
 
     // If any button is pressed, then record the time so we can determine when to dim the display
     // Also reset the lastInteractionTime if a drive motor comes on so that the display is bright when there's actual disk activity
     if (buttonStates[0] || buttonStates[1] || buttonStates[2] || getTrackParams(0)->motorOn || getTrackParams(1)->motorOn ||
-        lisanetMenuUp) {
+        lisanetOverlayUp || lisanetSwallow) {
         lastInteractionTime = currentTime;
     }
 
@@ -745,7 +762,7 @@ bool uiUpdate() {
     }
 
     // Call the button press function for the current screen
-    if (!lisanetMenuUp) currentScreen->buttonPress(buttonStates);
+    if (!lisanetOverlayUp) currentScreen->buttonPress(buttonStates);
     // As well as the tick function
     currentScreen->tick(currentTime);
     lisanetLogUi(buttonStates);
@@ -757,15 +774,23 @@ bool uiUpdate() {
         }
         if (lisanetMenuDraw()) markAllPagesDirty();
         redrawScreen = true;                     // whatever the screen underneath wanted, it gets once the menu closes
-    } else if (lisanetMenuWasUp) {
+    } else if (lisanetWifiUp) {
+        if (!lisanetWifiWasUp || lisanetMenuWasUp) {
+            lisanetWifiForceRedraw();
+            Serial.println("[ui] screen: WIFI notice (from the WiFi board)");
+        }
+        if (lisanetWifiDraw()) markAllPagesDirty();
+        redrawScreen = true;
+    } else if (lisanetMenuWasUp || lisanetWifiWasUp) {
         redrawWholeScreen();
-        Serial.println("[ui] screen: back from the LisaFPGA menu");
+        Serial.println("[ui] screen: back from the LisaFPGA menu / WiFi notice");
     }
     lisanetMenuWasUp = lisanetMenuUp;
+    lisanetWifiWasUp = lisanetWifiUp;
 
     // Only redraw the framebuffer if something actually changed; no point in wasting precious clock cycles if there's nothing to update
     // Keep in mind that this is only updating the framebuffer in RAM, not sending anything out over I2C, but still it's better not to waste time
-    if (redrawScreen && !lisanetMenuUp) {
+    if (redrawScreen && !lisanetOverlayUp) {
         currentScreen->drawScreen();
         redrawScreen = false;
     }
