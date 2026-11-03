@@ -122,7 +122,7 @@ static void handle(uint8_t cmd, const uint8_t* p, size_t n) {
             put8((driveExists(d) ? 1 : 0) | (in ? 2 : 0) | (ej ? 4 : 0));
             putStr(in ? driveFilenames[d] : "", 255);
         }
-        putStr("ESFloppy " FIRMWARE_VERSION " + LisaNet floppy remote 0.2", 64);
+        putStr("ESFloppy " FIRMWARE_VERSION " + LisaNet floppy remote 0.3", 64);
         break;
     }
     case CMD_DRIVE_LIST: {

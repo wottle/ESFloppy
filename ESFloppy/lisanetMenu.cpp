@@ -77,7 +77,7 @@ static bool menuOpen()   { return st[13] & 0x80; }
 static bool adjusting()  { return st[13] & 0x40; }
 static bool adjustV()    { return st[13] & 0x20; }
 static bool coarse()     { return st[13] & 0x10; }
-static uint8_t menuSel() { return st[13] & 0x07; }
+static uint8_t menuSel() { return st[13] & 0x0F; }
 static bool boardPresent() { return st[1] & 0x04; }
 
 bool lisanetMenuShowing() {
@@ -89,8 +89,9 @@ bool lisanetMenuShowing() {
     return menuOpen() || adjusting();
 }
 
-static const char* const LABELS[8] = {"ESP32 MODE", "RESOLUTION", "ADJUST HORIZ", "ADJUST VERT",
-                                      "CPU SPEED", "MAX CONTRAST", "SAVE SETTINGS", "EXIT"};
+#define MENU_ITEMS 9
+static const char* const LABELS[MENU_ITEMS] = {"ESP32 MODE", "RESOLUTION", "ADJUST HORIZ", "ADJUST VERT",
+                                               "CPU SPEED", "MAX CONTRAST", "TV MENU", "SAVE SETTINGS", "EXIT"};
 
 // The value column, worded as on the TV
 static void itemValue(uint8_t item, char* out, size_t cap) {
@@ -103,21 +104,34 @@ static void itemValue(uint8_t item, char* out, size_t cap) {
     case 3: if (u16(9) == 0) snprintf(out, cap, "NO ROOM"); else snprintf(out, cap, "%u", u16(7)); break;
     case 4: snprintf(out, cap, "%s", (st[1] & 0x80) ? speeds[st[2] & 3] : "SWITCHES"); break;
     case 5: snprintf(out, cap, "%s", (st[1] & 0x01) ? "ON" : "OFF"); break;
-    case 6: snprintf(out, cap, "%s", (st[1] & 0x40) ? "SAVING" : (st[1] & 0x20) ? "SAVED" : "DEFAULT"); break;
+    case 6: snprintf(out, cap, "%s", (st[12] & 0x80) ? "OFF" : "ON"); break;
+    case 7: snprintf(out, cap, "%s", (st[1] & 0x40) ? "SAVING" : (st[1] & 0x20) ? "SAVED" : "DEFAULT"); break;
     default: out[0] = 0;
     }
 }
 
+#define OLED_ROWS 8                                      // 64 px at MENU_ITEM_HEIGHT
+static uint8_t menuTop = 0;                              // the first item shown when the list is longer than the screen
+
 static void drawMenu() {
     uint8_t first = boardPresent() ? 0 : 1;              // ESP32 MODE is hidden without a WiFi board, as on the TV
-    uint8_t rows = 8 - first;
+    uint8_t rows = MENU_ITEMS - first;
     uint32_t y = 0;
-    if (rows < 8) {                                       // a spare line: use it for a title
+    uint8_t top = first, last = MENU_ITEMS;
+    if (rows < OLED_ROWS) {                              // a spare line: use it for a title
         OLED.drawStr((128 - OLED.getStrWidth("LISAFPGA MENU")) / 2, 0, "LISAFPGA MENU");
         OLED.drawHLine(0, MENU_ITEM_HEIGHT - 1, 128);
         y = MENU_ITEM_HEIGHT;
+    } else if (rows > OLED_ROWS) {                       // too long: scroll so the highlighted row stays in view
+        uint8_t sel = menuSel();
+        if (menuTop < first) menuTop = first;
+        if (sel < menuTop) menuTop = sel;
+        if (sel >= menuTop + OLED_ROWS) menuTop = sel - OLED_ROWS + 1;
+        if (menuTop > MENU_ITEMS - OLED_ROWS) menuTop = MENU_ITEMS - OLED_ROWS;
+        top = menuTop;
+        last = top + OLED_ROWS;
     }
-    for (uint8_t item = first; item < 8; item++, y += MENU_ITEM_HEIGHT) {
+    for (uint8_t item = top; item < last; item++, y += MENU_ITEM_HEIGHT) {
         char value[16];
         itemValue(item, value, sizeof value);
         bool sel = item == menuSel();
